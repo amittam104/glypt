@@ -1,0 +1,7 @@
+node_modules/
+.pnpm-store/
+dist/
+.cache/
+.DS_Store
+*.tsbuildinfo
+DEVELOPMENT_PLAN.md
