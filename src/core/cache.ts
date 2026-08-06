@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -79,8 +80,10 @@ export async function writeJsonFile(
 		await mkdir(dirname(filePath), { recursive: true });
 
 		const jsonValue = JSON.stringify(value, null, 2);
+		const temporaryFilePath = `${filePath}.${randomUUID()}.tmp`;
 
-		await writeFile(filePath, jsonValue, "utf-8");
+		await writeFile(temporaryFilePath, jsonValue, "utf-8");
+		await rename(temporaryFilePath, filePath);
 	} catch (error) {
 		throw new Error(`Failed to write JSON file: ${filePath}`, { cause: error });
 	}

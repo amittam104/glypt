@@ -102,11 +102,16 @@ export async function requestJson<T>(path: string): Promise<JsonResponse<T>> {
 		}
 
 		if (response.ok) {
-			return {
-				data: (await response.json()) as T,
-				sourceHost: host,
-				cacheTtlMs: getCacheTtlMs(response.headers.get("cache-control")),
-			};
+			try {
+				return {
+					data: (await response.json()) as T,
+					sourceHost: host,
+					cacheTtlMs: getCacheTtlMs(response.headers.get("cache-control")),
+				};
+			} catch (error) {
+				lastError = error;
+				continue;
+			}
 		}
 
 		const statusError = new IconifyRequestError(
