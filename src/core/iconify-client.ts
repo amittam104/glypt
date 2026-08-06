@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import type { IconifyJSON } from "@iconify/types";
+import type { IconifyInfo, IconifyJSON } from "@iconify/types";
 import {
 	type CacheEnvelope,
 	createCacheEnvelope,
 	getCollectionCachePath,
+	getCollectionsCachePath,
 	getIconDataCachePath,
 	getSearchCachePath,
 	isCacheFresh,
@@ -27,6 +28,8 @@ export type CollectionResponse = {
 	aliases?: Record<string, string>;
 };
 
+export type CollectionsResponse = Record<string, IconifyInfo>;
+
 export type LastModifiedResponse = {
 	lastModified: Record<string, number>;
 };
@@ -34,6 +37,7 @@ export type LastModifiedResponse = {
 export type JsonResponse<T> = {
 	data: T;
 	sourceHost: string;
+	cacheTtlMs?: number;
 };
 
 export type SearchResponse = {
@@ -44,6 +48,39 @@ export type SearchResponse = {
 	collections?: Record<string, unknown>;
 	request?: Record<string, string>;
 };
+
+export class IconifyRequestError extends Error {
+	readonly allHostsFailed: boolean;
+	readonly status?: number;
+
+	constructor(
+		message: string,
+		options: {
+			allHostsFailed?: boolean;
+			cause?: unknown;
+			status?: number;
+		} = {},
+	) {
+		super(message, { cause: options.cause });
+		this.name = "IconifyRequestError";
+		this.allHostsFailed = options.allHostsFailed ?? false;
+		this.status = options.status;
+	}
+}
+
+export function getCacheTtlMs(cacheControl: string | null): number | undefined {
+	if (!cacheControl) {
+		return undefined;
+	}
+
+	const maxAgeMatch = cacheControl.match(/(?:^|,)\s*max-age\s*=\s*"?(\d+)"?/i);
+
+	if (!maxAgeMatch) {
+		return undefined;
+	}
+
+	return Number(maxAgeMatch[1]) * 1000;
+}
 
 export async function requestJson<T>(path: string): Promise<JsonResponse<T>> {
 	let lastError: unknown;
@@ -68,11 +105,13 @@ export async function requestJson<T>(path: string): Promise<JsonResponse<T>> {
 			return {
 				data: (await response.json()) as T,
 				sourceHost: host,
+				cacheTtlMs: getCacheTtlMs(response.headers.get("cache-control")),
 			};
 		}
 
-		const statusError = new Error(
+		const statusError = new IconifyRequestError(
 			`Iconify request failed with status ${response.status}`,
+			{ status: response.status },
 		);
 
 		if (!isRetryableStatus(response.status)) {
@@ -82,9 +121,18 @@ export async function requestJson<T>(path: string): Promise<JsonResponse<T>> {
 		lastError = statusError;
 	}
 
-	throw new Error(`All Iconify API hosts failed for ${path}`, {
+	throw new IconifyRequestError(`All Iconify API hosts failed for ${path}`, {
+		allHostsFailed: true,
 		cause: lastError,
 	});
+}
+
+function canUseStaleCache(error: unknown): boolean {
+	return error instanceof IconifyRequestError && error.allHostsFailed;
+}
+
+function warnAboutStaleCache(cachePath: string): void {
+	console.warn(`Iconify API unavailable; using stale cache: ${cachePath}`);
 }
 
 export async function getCollectionVersion(prefix: string): Promise<string> {
@@ -109,6 +157,59 @@ export async function fetchCollection(
 	);
 }
 
+export async function fetchCollections(): Promise<
+	JsonResponse<CollectionsResponse>
+> {
+	return requestJson<CollectionsResponse>("/collections");
+}
+
+export async function getCachedCollections(): Promise<CollectionsResponse> {
+	const cachePath = getCollectionsCachePath();
+	const cached =
+		await readJsonFile<CacheEnvelope<CollectionsResponse>>(cachePath);
+
+	if (cached && isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)) {
+		return cached.data;
+	}
+
+	let freshCollections: JsonResponse<CollectionsResponse>;
+
+	try {
+		freshCollections = await fetchCollections();
+	} catch (error) {
+		if (cached && canUseStaleCache(error)) {
+			warnAboutStaleCache(cachePath);
+			return cached.data;
+		}
+
+		throw error;
+	}
+
+	const envelope = createCacheEnvelope(
+		freshCollections.data,
+		freshCollections.sourceHost,
+		"catalog",
+		freshCollections.cacheTtlMs,
+	);
+
+	await writeJsonFile(cachePath, envelope);
+
+	return envelope.data;
+}
+
+export async function getCachedCollectionInfo(
+	prefix: string,
+): Promise<IconifyInfo> {
+	const collections = await getCachedCollections();
+	const collectionInfo = collections[prefix];
+
+	if (!collectionInfo) {
+		throw new Error(`Unknown Iconify collection: ${prefix}`);
+	}
+
+	return collectionInfo;
+}
+
 export async function getCachedCollection(
 	prefix: string,
 ): Promise<CollectionResponse> {
@@ -117,17 +218,29 @@ export async function getCachedCollection(
 	const cached =
 		await readJsonFile<CacheEnvelope<CollectionResponse>>(cachePath);
 
-	if (cached && isCacheFresh(cached.fetchedAt)) {
+	if (cached && isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)) {
 		return cached.data;
 	}
 
-	const currentVersion = await getCollectionVersion(prefix);
+	let currentVersion: string;
+
+	try {
+		currentVersion = await getCollectionVersion(prefix);
+	} catch (error) {
+		if (cached && canUseStaleCache(error)) {
+			warnAboutStaleCache(cachePath);
+			return cached.data;
+		}
+
+		throw error;
+	}
 
 	if (cached && currentVersion === cached?.collectionRevision) {
 		const refreshedEnvelop = createCacheEnvelope(
 			cached?.data,
 			cached.sourceHost,
 			currentVersion,
+			cached.cacheTtlMs,
 		);
 
 		await writeJsonFile(cachePath, refreshedEnvelop);
@@ -135,12 +248,24 @@ export async function getCachedCollection(
 		return cached.data;
 	}
 
-	const freshCollection = await fetchCollection(prefix);
+	let freshCollection: JsonResponse<CollectionResponse>;
+
+	try {
+		freshCollection = await fetchCollection(prefix);
+	} catch (error) {
+		if (cached && canUseStaleCache(error)) {
+			warnAboutStaleCache(cachePath);
+			return cached.data;
+		}
+
+		throw error;
+	}
 
 	const freshEnvelop = createCacheEnvelope(
 		freshCollection.data,
 		freshCollection.sourceHost,
 		currentVersion,
+		freshCollection.cacheTtlMs,
 	);
 
 	await writeJsonFile(cachePath, freshEnvelop);
@@ -309,16 +434,29 @@ async function getCachedIconDataBatch(
 	if (
 		cached &&
 		cached.collectionRevision === collectionRevision &&
-		isCacheFresh(cached.fetchedAt)
+		isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)
 	) {
 		return cached.data;
 	}
 
-	const freshIconData = await fetchIconData(prefix, names);
+	let freshIconData: JsonResponse<IconifyJSON>;
+
+	try {
+		freshIconData = await fetchIconData(prefix, names);
+	} catch (error) {
+		if (cached && canUseStaleCache(error)) {
+			warnAboutStaleCache(cachePath);
+			return cached.data;
+		}
+
+		throw error;
+	}
+
 	const envelope = createCacheEnvelope(
 		freshIconData.data,
 		freshIconData.sourceHost,
 		collectionRevision,
+		freshIconData.cacheTtlMs,
 	);
 
 	await writeJsonFile(cachePath, envelope);
@@ -408,7 +546,10 @@ export async function getCachedSearch(
 	const cachedSearch =
 		await readJsonFile<CacheEnvelope<SearchResponse>>(searchCachePath);
 
-	if (cachedSearch && isCacheFresh(cachedSearch.fetchedAt)) {
+	if (
+		cachedSearch &&
+		isCacheFresh(cachedSearch.fetchedAt, cachedSearch.cacheTtlMs)
+	) {
 		return cachedSearch.data;
 	}
 
@@ -426,12 +567,24 @@ export async function getCachedSearch(
 	}
 
 	const searchPath = `/search?${searchParams.toString()}`;
-	const freshSearch = await fetchSearch(searchPath);
+	let freshSearch: JsonResponse<SearchResponse>;
+
+	try {
+		freshSearch = await fetchSearch(searchPath);
+	} catch (error) {
+		if (cachedSearch && canUseStaleCache(error)) {
+			warnAboutStaleCache(searchCachePath);
+			return cachedSearch.data;
+		}
+
+		throw error;
+	}
 
 	const freshEnvelope = createCacheEnvelope(
 		freshSearch.data,
 		freshSearch.sourceHost,
 		collectionRevision,
+		freshSearch.cacheTtlMs,
 	);
 
 	await writeJsonFile(searchCachePath, freshEnvelope);

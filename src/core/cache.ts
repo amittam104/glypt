@@ -2,12 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type CacheEnvelope<T> = {
 	schemaVersion: 1;
 	sourceHost: string;
 	fetchedAt: string;
+	cacheTtlMs?: number;
 	collectionRevision: string;
 	data: T;
 };
@@ -24,6 +25,10 @@ export async function ensureCacheRoot(): Promise<void> {
 	const cacheRoot = getCacheRoot();
 
 	await mkdir(cacheRoot, { recursive: true });
+}
+
+export function getCollectionsCachePath(): string {
+	return join(getCacheRoot(), "collections.json");
 }
 
 export function getCollectionCachePath(prefix: string): string {
@@ -103,22 +108,27 @@ export function createCacheEnvelope<T>(
 	data: T,
 	sourceHost: string,
 	collectionRevision: string,
+	cacheTtlMs?: number,
 ): CacheEnvelope<T> {
 	return {
 		schemaVersion: 1,
 		sourceHost,
 		fetchedAt: new Date().toISOString(),
+		cacheTtlMs: cacheTtlMs ?? DEFAULT_CACHE_TTL_MS,
 		collectionRevision,
 		data,
 	};
 }
 
-export function isCacheFresh(fetchedAt: string): boolean {
+export function isCacheFresh(
+	fetchedAt: string,
+	cacheTtlMs = DEFAULT_CACHE_TTL_MS,
+): boolean {
 	const fetchedTime = Date.parse(fetchedAt);
 
 	if (Number.isNaN(fetchedTime)) return false;
 
 	const age = Date.now() - fetchedTime;
 
-	return age >= 0 && age <= CACHE_TTL_MS;
+	return age >= 0 && age <= cacheTtlMs;
 }
