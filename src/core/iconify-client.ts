@@ -49,6 +49,8 @@ export type SearchResponse = {
 	request?: Record<string, string>;
 };
 
+type ResponseParser<T> = (value: unknown) => T;
+
 export class IconifyRequestError extends Error {
 	readonly allHostsFailed: boolean;
 	readonly status?: number;
@@ -82,7 +84,10 @@ export function getCacheTtlMs(cacheControl: string | null): number | undefined {
 	return Number(maxAgeMatch[1]) * 1000;
 }
 
-export async function requestJson<T>(path: string): Promise<JsonResponse<T>> {
+export async function requestJson<T>(
+	path: string,
+	parseResponse: ResponseParser<T> = (value) => value as T,
+): Promise<JsonResponse<T>> {
 	let lastError: unknown;
 
 	for (const host of getAPIHosts()) {
@@ -104,7 +109,7 @@ export async function requestJson<T>(path: string): Promise<JsonResponse<T>> {
 		if (response.ok) {
 			try {
 				return {
-					data: (await response.json()) as T,
+					data: parseResponse(await response.json()),
 					sourceHost: host,
 					cacheTtlMs: getCacheTtlMs(response.headers.get("cache-control")),
 				};
@@ -143,6 +148,7 @@ function warnAboutStaleCache(cachePath: string): void {
 export async function getCollectionVersion(prefix: string): Promise<string> {
 	const res = await requestJson<LastModifiedResponse>(
 		`last-modified?prefix=${encodeURIComponent(prefix)}`,
+		(value) => parseLastModifiedResponse(value, prefix),
 	);
 
 	const revision = res.data.lastModified[prefix];
@@ -152,6 +158,35 @@ export async function getCollectionVersion(prefix: string): Promise<string> {
 	}
 
 	return String(revision);
+}
+
+function parseLastModifiedResponse(
+	value: unknown,
+	prefix: string,
+): LastModifiedResponse {
+	if (typeof value !== "object" || value === null) {
+		throw new Error("Invalid last-modified response");
+	}
+
+	const lastModified = (value as { lastModified?: unknown }).lastModified;
+
+	if (
+		typeof lastModified !== "object" ||
+		lastModified === null ||
+		Array.isArray(lastModified)
+	) {
+		throw new Error("Invalid last-modified response");
+	}
+
+	const revision = (lastModified as Record<string, unknown>)[prefix];
+
+	if (typeof revision !== "number" || !Number.isFinite(revision)) {
+		throw new Error(`No valid revision found for ${prefix}`);
+	}
+
+	return {
+		lastModified: lastModified as Record<string, number>,
+	};
 }
 
 export async function fetchCollection(
