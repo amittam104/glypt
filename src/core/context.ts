@@ -1,193 +1,93 @@
-import { access, stat } from "node:fs/promises";
-import {
-	dirname,
-	isAbsolute,
-	join,
-	relative,
-	resolve,
-	sep,
-} from "node:path";
+import { getCachedCollections } from "./iconify-client.js";
 
-export type StaticPackageImport = {
-	source: string;
-	packageName: string;
-	line: number;
+export type IconCollection = {
+	name: string;
+	prefix: string;
 };
 
-const WORKSPACE_MARKERS = ["pnpm-workspace.yaml", "pnpm-workspace.yml"];
+const ICON_LIBRARY_ALIASES = [
+	{
+		prefix: "lucide",
+		aliases: ["lucide", "lucide icons", "lucide-react"],
+	},
+	{
+		prefix: "hugeicons",
+		aliases: [
+			"huge icons",
+			"hugeicons",
+			"@hugeicons/react",
+			"@hugeicons/core-free-icons",
+		],
+	},
+	{
+		prefix: "ph",
+		aliases: ["phosphor", "phosphor icons", "@phosphor-icons/react"],
+	},
+	{
+		prefix: "tabler",
+		aliases: ["tabler", "tabler icons", "@tabler/icons-react"],
+	},
+	{
+		prefix: "heroicons",
+		aliases: ["heroicons", "hero icons", "@heroicons/react"],
+	},
+	{
+		prefix: "radix-icons",
+		aliases: ["radix", "radix icons", "@radix-ui/react-icons"],
+	},
+] as const;
 
-async function pathExists(filePath: string): Promise<boolean> {
-	try {
-		await access(filePath);
-
-		return true;
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-			return false;
-		}
-
-		throw error;
-	}
+function normalizeLibraryName(value: string): string {
+	return value
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "");
 }
 
-export async function validateProjectPath(
-	projectPath: string,
-): Promise<string> {
-	const projectRoot = resolve(projectPath);
-	let projectStats: Awaited<ReturnType<typeof stat>>;
+export async function resolveIconCollection(
+	library: string,
+): Promise<IconCollection> {
+	const normalizedLibrary = normalizeLibraryName(library);
 
-	try {
-		projectStats = await stat(projectRoot);
-	} catch (error) {
-		throw new Error(`Cannot access project path: ${projectRoot}`, {
-			cause: error,
-		});
+	if (!normalizedLibrary) {
+		throw new Error("Icon library is required");
 	}
 
-	if (!projectStats.isDirectory()) {
-		throw new Error(`Project path is not a directory: ${projectRoot}`);
-	}
-
-	return projectRoot;
-}
-
-export async function validateTargetFile(
-	projectRoot: string,
-	targetFile?: string,
-): Promise<string | undefined> {
-	if (!targetFile) {
-		return undefined;
-	}
-
-	const absoluteProjectRoot = resolve(projectRoot);
-	const absoluteTargetFile = resolve(absoluteProjectRoot, targetFile);
-	const relativeTargetPath = relative(
-		absoluteProjectRoot,
-		absoluteTargetFile,
+	const collections = await getCachedCollections();
+	const aliasMatch = ICON_LIBRARY_ALIASES.find(({ aliases }) =>
+		aliases.some((alias) => normalizeLibraryName(alias) === normalizedLibrary),
 	);
 
-	if (
-		relativeTargetPath === ".." ||
-		relativeTargetPath.startsWith(`..${sep}`) ||
-		isAbsolute(relativeTargetPath)
-	) {
-		throw new Error(
-			`Target file must be inside the project: ${absoluteTargetFile}`,
-		);
-	}
+	if (aliasMatch) {
+		const collection = collections[aliasMatch.prefix];
 
-	let targetStats: Awaited<ReturnType<typeof stat>>;
-
-	try {
-		targetStats = await stat(absoluteTargetFile);
-	} catch (error) {
-		throw new Error(`Cannot access target file: ${absoluteTargetFile}`, {
-			cause: error,
-		});
-	}
-
-	if (!targetStats.isFile()) {
-		throw new Error(`Target path is not a file: ${absoluteTargetFile}`);
-	}
-
-	return absoluteTargetFile;
-}
-
-export async function findNearestPackageRoot(
-	startDirectory: string,
-): Promise<string | null> {
-	let currentDirectory = resolve(startDirectory);
-
-	while (true) {
-		const packageJsonPath = join(currentDirectory, "package.json");
-
-		if (await pathExists(packageJsonPath)) {
-			return currentDirectory;
+		if (collection) {
+			return { name: collection.name, prefix: aliasMatch.prefix };
 		}
-
-		const parentDirectory = dirname(currentDirectory);
-
-		if (parentDirectory === currentDirectory) {
-			return null;
-		}
-
-		currentDirectory = parentDirectory;
-	}
-}
-
-export async function findWorkspaceRoot(
-	startDirectory: string,
-): Promise<string | null> {
-	let currentDirectory = resolve(startDirectory);
-
-	while (true) {
-		for (const marker of WORKSPACE_MARKERS) {
-			if (await pathExists(join(currentDirectory, marker))) {
-				return currentDirectory;
-			}
-		}
-
-		const parentDirectory = dirname(currentDirectory);
-
-		if (parentDirectory === currentDirectory) {
-			return null;
-		}
-
-		currentDirectory = parentDirectory;
-	}
-}
-
-export function getPackageRoot(moduleSpecifier: string): string | null {
-	if (
-		moduleSpecifier.startsWith(".") ||
-		moduleSpecifier.startsWith("/") ||
-		moduleSpecifier.startsWith("node:") ||
-		moduleSpecifier.startsWith("#") ||
-		moduleSpecifier.startsWith("@/") ||
-		moduleSpecifier.startsWith("~/")
-	) {
-		return null;
 	}
 
-	const segments = moduleSpecifier.split("/");
+	const prefixMatch = Object.keys(collections).find(
+		(prefix) => normalizeLibraryName(prefix) === normalizedLibrary,
+	);
 
-	if (moduleSpecifier.startsWith("@")) {
-		if (segments.length < 2 || !segments[1]) {
-			return null;
-		}
-
-		return segments.slice(0, 2).join("/");
+	if (prefixMatch) {
+		return { name: collections[prefixMatch].name, prefix: prefixMatch };
 	}
 
-	return segments[0] ?? null;
-}
+	const nameMatches = Object.entries(collections).filter(
+		([, collection]) =>
+			normalizeLibraryName(collection.name) === normalizedLibrary,
+	);
 
-export function extractStaticPackageImports(
-	sourceText: string,
-): StaticPackageImport[] {
-	const matches: StaticPackageImport[] = [];
+	if (nameMatches.length === 1) {
+		const [prefix, collection] = nameMatches[0];
 
-	const staticImportPattern =
-		/(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/g;
-
-	for (const match of sourceText.matchAll(staticImportPattern)) {
-		const moduleSpecifier = match[1];
-		const matchIndex = match.index;
-
-		const packageName = getPackageRoot(moduleSpecifier);
-
-		if (!packageName) {
-			continue;
-		}
-
-		const line = sourceText.slice(0, matchIndex).split("\n").length;
-
-		matches.push({
-			source: moduleSpecifier,
-			packageName,
-			line,
-		});
+		return { name: collection.name, prefix };
 	}
 
-	return matches;
+	if (nameMatches.length > 1) {
+		throw new Error(`Icon library is ambiguous: ${library}`);
+	}
+
+	throw new Error(`Unknown icon library: ${library}`);
 }

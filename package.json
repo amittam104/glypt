@@ -1,7 +1,7 @@
 {
 	"name": "glypt",
 	"version": "0.1.0",
-	"description": "An agent-oriented icon discovery and native icon resolution CLI.",
+	"description": "An agent-oriented visual icon discovery tool.",
 	"scripts": {
 		"build": "tsc",
 		"dev": "node bin/dev.js",
