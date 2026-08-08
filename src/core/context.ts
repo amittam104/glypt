@@ -46,6 +46,7 @@ function normalizeLibraryName(value: string): string {
 
 export async function resolveIconCollection(
 	library: string,
+	refresh = false,
 ): Promise<IconCollection> {
 	const normalizedLibrary = normalizeLibraryName(library);
 
@@ -53,7 +54,7 @@ export async function resolveIconCollection(
 		throw new Error("Icon library is required");
 	}
 
-	const collections = await getCachedCollections();
+	const collections = await getCachedCollections(refresh);
 	const aliasMatch = ICON_LIBRARY_ALIASES.find(({ aliases }) =>
 		aliases.some((alias) => normalizeLibraryName(alias) === normalizedLibrary),
 	);

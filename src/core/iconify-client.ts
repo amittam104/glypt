@@ -203,12 +203,14 @@ export async function fetchCollections(): Promise<
 	return requestJson<CollectionsResponse>("/collections");
 }
 
-export async function getCachedCollections(): Promise<CollectionsResponse> {
+export async function getCachedCollections(
+	refresh = false,
+): Promise<CollectionsResponse> {
 	const cachePath = getCollectionsCachePath();
 	const cached =
 		await readJsonFile<CacheEnvelope<CollectionsResponse>>(cachePath);
 
-	if (cached && isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)) {
+	if (cached && !refresh && isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)) {
 		return cached.data;
 	}
 
@@ -239,8 +241,9 @@ export async function getCachedCollections(): Promise<CollectionsResponse> {
 
 export async function getCachedCollectionInfo(
 	prefix: string,
+	refresh = false,
 ): Promise<IconifyInfo> {
-	const collections = await getCachedCollections();
+	const collections = await getCachedCollections(refresh);
 	const collectionInfo = collections[prefix];
 
 	if (!collectionInfo) {
@@ -252,13 +255,14 @@ export async function getCachedCollectionInfo(
 
 export async function getCachedCollection(
 	prefix: string,
+	refresh = false,
 ): Promise<CollectionResponse> {
 	const cachePath = getCollectionCachePath(prefix);
 
 	const cached =
 		await readJsonFile<CacheEnvelope<CollectionResponse>>(cachePath);
 
-	if (cached && isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)) {
+	if (cached && !refresh && isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)) {
 		return cached.data;
 	}
 
@@ -463,6 +467,7 @@ async function getCachedIconDataBatch(
 	prefix: string,
 	names: string[],
 	collectionRevision: string,
+	refresh: boolean,
 ): Promise<IconifyJSON> {
 	const namesHash = createHash("sha256")
 		.update(JSON.stringify(names))
@@ -473,6 +478,7 @@ async function getCachedIconDataBatch(
 
 	if (
 		cached &&
+		!refresh &&
 		cached.collectionRevision === collectionRevision &&
 		isCacheFresh(cached.fetchedAt, cached.cacheTtlMs)
 	) {
@@ -508,6 +514,7 @@ export async function getCachedIconData(
 	prefix: string,
 	names: string[],
 	collectionRevision: string,
+	refresh = false,
 ): Promise<IconifyJSON> {
 	const uniqueNames = [...new Set(names)].sort();
 
@@ -531,7 +538,7 @@ export async function getCachedIconData(
 
 		const groupData = await Promise.all(
 			batchGroup.map((batch) =>
-				getCachedIconDataBatch(prefix, batch, collectionRevision),
+				getCachedIconDataBatch(prefix, batch, collectionRevision, refresh),
 			),
 		);
 
@@ -543,8 +550,9 @@ export async function getCachedIconData(
 
 export async function getCachedCollectionEnvelope(
 	prefix: string,
+	refresh = false,
 ): Promise<CacheEnvelope<CollectionResponse>> {
-	await getCachedCollection(prefix);
+	await getCachedCollection(prefix, refresh);
 
 	const path = getCollectionCachePath(prefix);
 
@@ -562,9 +570,12 @@ export async function getCachedSearch(
 	limit: number,
 	start: number,
 	prefix: string,
+	options: { collectionRevision?: string; refresh?: boolean } = {},
 ): Promise<SearchResponse> {
-	const cachedCollectionEnvelope = await getCachedCollectionEnvelope(prefix);
-	const collectionRevision = cachedCollectionEnvelope.collectionRevision;
+	const collectionRevision =
+		options.collectionRevision ??
+		(await getCachedCollectionEnvelope(prefix, options.refresh))
+			.collectionRevision;
 
 	const normalizedQuery = query.trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -588,6 +599,7 @@ export async function getCachedSearch(
 
 	if (
 		cachedSearch &&
+		!options.refresh &&
 		isCacheFresh(cachedSearch.fetchedAt, cachedSearch.cacheTtlMs)
 	) {
 		return cachedSearch.data;
