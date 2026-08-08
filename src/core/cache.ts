@@ -89,6 +89,20 @@ export async function writeJsonFile(
 	}
 }
 
+export async function writeBinaryFile(
+	filePath: string,
+	value: Uint8Array,
+): Promise<void> {
+	try {
+		await mkdir(dirname(filePath), { recursive: true });
+		await writeFile(filePath, value);
+	} catch (error) {
+		throw new Error(`Failed to write binary file: ${filePath}`, {
+			cause: error,
+		});
+	}
+}
+
 export async function readJsonFile<T>(filePath: string): Promise<T | null> {
 	try {
 		const value = await readFile(filePath, "utf-8");
