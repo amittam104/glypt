@@ -44,6 +44,12 @@ The skill is distributed from this GitHub repository through the [skills CLI](ht
 npx skills add amittam104/glypt --skill glypt -g
 ```
 
+When running the command inside a project that enforces pnpm, use the equivalent pnpm command:
+
+```bash
+pnpm dlx skills add amittam104/glypt --skill glypt -g
+```
+
 The installer detects supported coding agents and asks where to install the skill. The `-g` flag makes it available across projects on your machine.
 
 ### 3. Choose how your agent uses glypt
@@ -152,13 +158,13 @@ The same prompt works with either MCP or the CLI. The skill tells the agent to i
 
 glypt and [better-icons](https://github.com/better-auth/better-icons) solve adjacent problems with different priorities.
 
-| | glypt | better-icons |
-|---|---|---|
-| Primary choice method | Visually inspect rendered PNG atlases with opaque refs | Search, recommend, and retrieve icons by metadata and identity |
-| Library strategy | Preserve the native icon library already used by the project | Search and retrieve across many Iconify collections |
-| Returned result | Resolve selected refs to Iconify IDs, then verify native exports in the project | Retrieve SVG or JSON and support direct project synchronization |
-| Completeness fallback | Browse the selected collection exhaustively in visual pages | Use search, recommendations, similar icons, and collection tools |
-| Source editing | Glypt never reads or edits application files | Includes project-aware and synchronization workflows |
+|                       | glypt                                                                           | better-icons                                                     |
+| --------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Primary choice method | Visually inspect rendered PNG atlases with opaque refs                          | Search, recommend, and retrieve icons by metadata and identity   |
+| Library strategy      | Preserve the native icon library already used by the project                    | Search and retrieve across many Iconify collections              |
+| Returned result       | Resolve selected refs to Iconify IDs, then verify native exports in the project | Retrieve SVG or JSON and support direct project synchronization  |
+| Completeness fallback | Browse the selected collection exhaustively in visual pages                     | Use search, recommendations, similar icons, and collection tools |
+| Source editing        | Glypt never reads or edits application files                                    | Includes project-aware and synchronization workflows             |
 
 Choose glypt when visual comparison, existing-library consistency, and verified native imports are the priority.
 
