@@ -1,10 +1,15 @@
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import {
+	type StdioServerHandle,
+	serveStdio,
+} from "@modelcontextprotocol/server/stdio";
 import { createMcpServer } from "./server.js";
 
-void serveStdio(createMcpServer, {
-	onerror: (error) => {
-		console.error(`[glypt:mcp] ${error.message}`);
-	},
-});
+export function startMcpServer(): StdioServerHandle {
+	console.error("glypt MCP server running on stdio");
 
-console.error("glypt MCP server running on stdio");
+	return serveStdio(createMcpServer, {
+		onerror: (error) => {
+			console.error(`[glypt:mcp] ${error.message}`);
+		},
+	});
+}
