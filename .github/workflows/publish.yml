@@ -47,16 +47,15 @@ jobs:
         id: version
         run: |
           package_version="$(node -p "require('./package.json').version")"
+          published_versions="$(pnpm view glypt versions --json)"
+          is_published="$(node -e 'const versions = JSON.parse(process.argv[1]); if (!Array.isArray(versions)) process.exit(1); process.stdout.write(String(versions.includes(process.argv[2])))' "$published_versions" "$package_version")"
 
-          if output="$(pnpm view "glypt@$package_version" version 2>&1)"; then
+          if [[ "$is_published" == "true" ]]; then
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
             echo "glypt@$package_version is already published."
-          elif [[ "$output" == *ERR_PNPM_PACKAGE_NOT_FOUND* ]]; then
+          else
             echo "should_publish=true" >> "$GITHUB_OUTPUT"
             echo "glypt@$package_version is ready to publish."
-          else
-            echo "$output" >&2
-            exit 1
           fi
 
       - name: Publish package
