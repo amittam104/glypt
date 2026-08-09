@@ -47,7 +47,16 @@ jobs:
         id: version
         run: |
           package_version="$(node -p "require('./package.json').version")"
-          published_versions="$(pnpm view glypt versions --json)"
+
+          if published_versions="$(pnpm view glypt versions --json 2>&1)"; then
+            :
+          elif [[ "$published_versions" == *ERR_PNPM_FETCH_404* ]]; then
+            published_versions="[]"
+          else
+            echo "$published_versions" >&2
+            exit 1
+          fi
+
           is_published="$(node -e 'const versions = JSON.parse(process.argv[1]); if (!Array.isArray(versions)) process.exit(1); process.stdout.write(String(versions.includes(process.argv[2])))' "$published_versions" "$package_version")"
 
           if [[ "$is_published" == "true" ]]; then
