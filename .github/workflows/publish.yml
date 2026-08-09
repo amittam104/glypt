@@ -1,0 +1,72 @@
+name: Publish Package
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.11.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Check package version
+        id: version
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+
+          if published_versions="$(pnpm view glypt versions --json 2>&1)"; then
+            :
+          elif [[ "$published_versions" == *ERR_PNPM_FETCH_404* ]]; then
+            published_versions="[]"
+          else
+            echo "$published_versions" >&2
+            exit 1
+          fi
+
+          is_published="$(node -e 'const versions = JSON.parse(process.argv[1]); if (!Array.isArray(versions)) process.exit(1); process.stdout.write(String(versions.includes(process.argv[2])))' "$published_versions" "$package_version")"
+
+          if [[ "$is_published" == "true" ]]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "glypt@$package_version is already published."
+          else
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            echo "glypt@$package_version is ready to publish."
+          fi
+
+      - name: Publish package
+        if: steps.version.outputs.should_publish == 'true'
+        run: pnpm publish --access public --publish-branch main
