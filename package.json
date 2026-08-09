@@ -2,13 +2,19 @@
 	"name": "glypt",
 	"version": "0.1.0",
 	"description": "An agent-oriented visual icon discovery tool.",
+	"mcpName": "io.github.amittam104/glypt",
 	"scripts": {
 		"build": "tsc",
 		"dev": "node bin/dev.js",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check .",
-		"format": "biome format --write ."
+		"format": "biome format --write .",
+		"prepack": "pnpm run build"
 	},
+	"files": [
+		"bin/run.js",
+		"dist"
+	],
 	"keywords": [
 		"cli",
 		"icons",
@@ -26,6 +32,9 @@
 	"homepage": "https://github.com/amittam104/glypt#readme",
 	"author": "Amit Tambulkar",
 	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	},
 	"engines": {
 		"node": ">=22"
 	},

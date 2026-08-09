@@ -1,0 +1,29 @@
+{
+	"$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+	"name": "io.github.amittam104/glypt",
+	"title": "glypt",
+	"description": "Visually discover icons from an existing icon library and resolve selected refs to Iconify IDs.",
+	"repository": {
+		"url": "https://github.com/amittam104/glypt",
+		"source": "github"
+	},
+	"version": "0.1.0",
+	"packages": [
+		{
+			"registryType": "npm",
+			"registryBaseUrl": "https://registry.npmjs.org",
+			"identifier": "glypt",
+			"version": "0.1.0",
+			"runtimeHint": "npx",
+			"packageArguments": [
+				{
+					"type": "positional",
+					"value": "mcp"
+				}
+			],
+			"transport": {
+				"type": "stdio"
+			}
+		}
+	]
+}
