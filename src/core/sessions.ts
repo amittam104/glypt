@@ -13,6 +13,13 @@ export type IconSession = {
 	refs: Record<string, string>;
 };
 
+export type ResolvedIcon = {
+	ref: string;
+	iconifyId: string;
+	prefix: string;
+	name: string;
+};
+
 export async function createIconSession(
 	library: string,
 	prefix: string,
@@ -58,4 +65,36 @@ export async function loadIconSession(sessionId: string): Promise<IconSession> {
 	}
 
 	return session;
+}
+
+export async function resolveIconRefs(
+	sessionId: string,
+	refs: string[],
+): Promise<ResolvedIcon[]> {
+	if (refs.length === 0) {
+		throw new Error("Provide at least one icon ref");
+	}
+
+	const session = await loadIconSession(sessionId);
+	const normalizedRefs = refs.map((ref) => ref.trim().toUpperCase());
+	const unknownRefs = normalizedRefs.filter(
+		(ref) => !Object.hasOwn(session.refs, ref),
+	);
+
+	if (unknownRefs.length > 0) {
+		throw new Error(
+			`Unknown icon refs: ${unknownRefs.join(", ")}. Available refs: ${Object.keys(session.refs).join(", ")}`,
+		);
+	}
+
+	return normalizedRefs.map((ref) => {
+		const iconifyId = session.refs[ref];
+
+		return {
+			ref,
+			iconifyId,
+			prefix: session.prefix,
+			name: iconifyId.slice(session.prefix.length + 1),
+		};
+	});
 }
