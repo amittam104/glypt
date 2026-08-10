@@ -8,7 +8,7 @@
 
 ## What is glypt?
 
-glypt is a local, read-only visual icon discovery tool for coding agents. It renders icons from the library a project already uses, labels them with opaque refs, and reveals an icon's identity only after the agent has visually selected it.
+glypt is a local, read-only visual icon discovery tool for coding agents. It renders icons from the library a project already uses, labels them with opaque refs, and reveals an icon's identity only after the agent has visually selected it. glypt is built on top of [Iconify](https://github.com/iconify/iconify) for icon data and more.
 
 ```text
 agent understands the project and its icon library
@@ -19,6 +19,13 @@ agent understands the project and its icon library
 ```
 
 glypt does not inspect a project, modify source files, choose icons automatically, or invent native imports. The installed agent skill owns that workflow around Glypt's CLI or MCP server.
+
+## Highlights
+
+- **322,996+ icons across 220+ Iconify icon sets** — counts follow Iconify's live catalog and change as it is updated.
+- **Visual-first discovery** — inspect PNG atlases with opaque refs before seeing icon names.
+- **Lean, cache-friendly CLI and MCP** — one local npm package with a shared core for both interfaces.
+- **Native-library safe** — resolve selected icons to Iconify IDs without editing source files or inventing native imports.
 
 ## How to Use?
 
